@@ -351,7 +351,7 @@ class TMC5160CurrentHelper:
             hold_current,
             self.req_hold_current,
             MAX_CURRENT,
-            self.config_home_current,
+            self.req_home_current,
         )
 
     def set_current(self, run_current, hold_current, print_time, force=False):
