@@ -290,16 +290,19 @@ class TMC5160CurrentHelper:
 
     def needs_home_current_change(self):
         needs = self.actual_current != self.req_home_current
-        logging.debug(f"tmc5160: needs_home_current_change {needs}")
+        logging.info(f"tmc5160: needs_home_current_change {needs}")
         return needs
 
     def needs_run_current_change(self):
         needs = self.actual_current != self.req_run_current
-        logging.debug(f"tmc5160: needs_run_current_change {needs}")
+        logging.info(f"tmc5160: needs_run_current_change {needs}")
         return needs
 
     def set_home_current(self, new_home_current):
         self.req_home_current = min(MAX_CURRENT, new_home_current)
+
+    def set_run_current(self, new_run_current):
+        self.req_run_current = min(MAX_CURRENT, new_run_current)
 
     def _calc_globalscaler(self, current):
         globalscaler = int(
@@ -359,8 +362,13 @@ class TMC5160CurrentHelper:
         ):
             return
 
+        if hold_current != self.req_hold_current:
+            self.req_hold_current = hold_current
+
         self.actual_current = run_current
-        logging.info(f"tmc5160: set_current() new actual current is {self.actual_current}")
+        logging.info(
+            f"tmc5160: set_current() new actual current is {self.actual_current}"
+        )
 
         gscaler, irun, ihold = self._calc_current(run_current, hold_current)
         val = self.fields.set_field("globalscaler", gscaler)

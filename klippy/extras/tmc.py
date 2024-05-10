@@ -368,12 +368,17 @@ class TMCCommandHelper:
             or hold_current is not None
             or home_current is not None
         ):
-            if run_current is None:
+            if run_current is not None:
+                ch.set_run_current(run_current)
+            else:
                 run_current = prev_cur
+
             if hold_current is None:
                 hold_current = req_hold_cur
+
             if home_current is not None:
                 ch.set_home_current(home_current)
+
             toolhead = self.printer.lookup_object("toolhead")
             print_time = toolhead.get_last_move_time()
             ch.set_current(run_current, hold_current, print_time)
