@@ -749,3 +749,76 @@ def TMCStealthchopHelper(config, mcu_tmc, tmc_freq):
     else:
         # TMC2208 uses en_spreadCycle
         fields.set_field("en_spreadcycle", not en_pwm_mode)
+
+
+class TMCCurrentHelper:
+    def __init__(self, config, mcu_tmc, max_current):
+        self.printer = config.get_printer()
+        self.name = config.get_name().split()[-1]
+        self.mcu_tmc = mcu_tmc
+        self.fields = mcu_tmc.get_fields()
+        self.config_run_current = config.getfloat(
+            "run_current", above=0.0, maxval=max_current
+        )
+        self.config_hold_current = config.getfloat(
+            "hold_current", max_current, above=0.0, maxval=max_current
+        )
+        self.config_home_current = config.getfloat(
+            "home_current",
+            self.config_run_current,
+            above=0.0,
+            maxval=max_current,
+        )
+        self.current_change_dwell_time = config.getfloat(
+            "current_change_dwell_time", 0.5, above=0.0
+        )
+        self.req_run_current = self.config_run_current
+        self.req_hold_current = self.config_hold_current
+        self.req_home_current = self.config_home_current
+
+        self.actual_current = self.req_run_current
+        self.max_current = max_current
+
+    def needs_home_current_change(self):
+        needs = self.actual_current != self.req_home_current
+        logging.info(f"tmc {self.name}: needs_home_current_change {needs}")
+        return needs
+
+    def needs_run_current_change(self):
+        needs = self.actual_current != self.req_run_current
+        logging.info(f"tmc {self.name}: needs_run_current_change {needs}")
+        return needs
+
+    def set_home_current(self, new_home_current):
+        self.req_home_current = min(self.max_current, new_home_current)
+
+    def set_run_current(self, new_run_current):
+        self.req_run_current = min(self.max_current, new_run_current)
+
+    def set_hold_current(self, new_hold_current):
+        self.req_hold_current = new_hold_current
+
+    def set_current_for_homing(self, print_time):
+        self.set_current(
+            self.req_home_current, self.req_hold_current, print_time
+        )
+
+    def set_current_for_normal(self, print_time):
+        self.set_current(
+            self.req_run_current, self.req_hold_current, print_time
+        )
+
+    def needs_current(self, run_current, hold_current, force=False):
+        if (
+            run_current == self.actual_current
+            and hold_current == self.req_hold_current
+            and not force
+        ):
+            return False
+        return True
+
+    def set_actual_current(self, current):
+        self.actual_current = current
+        logging.info(
+            f"tmc {self.name}: set_current() new actual_current: {self.actual_current}"
+        )
