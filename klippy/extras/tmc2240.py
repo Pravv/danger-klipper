@@ -374,8 +374,8 @@ class TMC2240CurrentHelper:
         self.mcu_tmc.set_register("IHOLD_IRUN", val, print_time)
 
     def set_current_for_homing(self, print_time):
-        prev_run_cur, _, _, _, _ = self.get_current()
-        self._prev_current = prev_run_cur
+        self._prev_current = self.run_current
+        self.run_current = self._home_current
         self.set_current(self._home_current, self.hold_current, print_time)
 
     def set_current_for_normal(self, print_time):
