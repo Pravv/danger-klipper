@@ -250,11 +250,9 @@ VREF = 0.325
 MAX_CURRENT = 10.000  # Maximum dependent on board, but 10 is safe sanity check
 
 
-class TMC5160CurrentHelper(tmc.TMCCurrentHelper):
+class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
     def __init__(self, config, mcu_tmc):
         super().__init__(config, mcu_tmc, MAX_CURRENT)
-
-        self.actual_current = self.req_run_current
 
         self.sense_resistor = config.getfloat(
             "sense_resistor", 0.075, above=0.0
@@ -316,15 +314,10 @@ class TMC5160CurrentHelper(tmc.TMCCurrentHelper):
             self.req_home_current,
         )
 
-    def set_current(self, run_current, hold_current, print_time, force=False):
-        if not self.needs_current(run_current, hold_current, force):
-            return
-
-        if hold_current != self.req_hold_current:
-            self.set_hold_current(hold_current)
-
-        self.set_actual_current(run_current)
-        gscaler, irun, ihold = self._calc_current(run_current, hold_current)
+    def apply_current(self, print_time):
+        gscaler, irun, ihold = self._calc_current(
+            self.actual_current, self.req_hold_current
+        )
         val = self.fields.set_field("globalscaler", gscaler)
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)
         self.fields.set_field("ihold", ihold)

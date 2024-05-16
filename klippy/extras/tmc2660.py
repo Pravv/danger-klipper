@@ -114,7 +114,7 @@ FieldFormatters.update(
 MAX_CURRENT = 2.400
 
 
-class TMC2660CurrentHelper(tmc.TMCCurrentHelper):
+class TMC2660CurrentHelper(tmc.BaseTMCCurrentHelper):
     def __init__(self, config, mcu_tmc):
         super().__init__(config, mcu_tmc, MAX_CURRENT)
 

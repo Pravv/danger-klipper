@@ -197,7 +197,7 @@ FieldFormatters = {
 MAX_CURRENT = 2.000
 
 
-class TMCCurrentHelper(tmc.TMCCurrentHelper):
+class TMC2130CurrentHelper(tmc.BaseTMCCurrentHelper):
     def __init__(self, config, mcu_tmc):
         super().__init__(config, mcu_tmc, MAX_CURRENT)
 
@@ -257,16 +257,10 @@ class TMCCurrentHelper(tmc.TMCCurrentHelper):
             self.req_home_current,
         )
 
-    def set_current(self, run_current, hold_current, print_time, force=False):
-        if not self.needs_current(run_current, hold_current, force):
-            return
-
-        if hold_current != self.req_hold_current:
-            self.set_hold_current(hold_current)
-
-        self.set_actual_current(run_current)
-
-        vsense, irun, ihold = self._calc_current(run_current, hold_current)
+    def apply_current(self, print_time):
+        vsense, irun, ihold = self._calc_current(
+            self.actual_current, self.req_hold_current
+        )
         if vsense != self.fields.get_field("vsense"):
             val = self.fields.set_field("vsense", vsense)
             self.mcu_tmc.set_register("CHOPCONF", val, print_time)
@@ -416,7 +410,7 @@ class TMC2130:
         # Allow virtual pins to be created
         tmc.TMCVirtualPinHelper(config, self.mcu_tmc)
         # Register commands
-        current_helper = TMCCurrentHelper(config, self.mcu_tmc)
+        current_helper = TMC2130CurrentHelper(config, self.mcu_tmc)
         cmdhelper = tmc.TMCCommandHelper(config, self.mcu_tmc, current_helper)
         cmdhelper.setup_register_dump(ReadRegisters)
         self.get_phase_offset = cmdhelper.get_phase_offset

@@ -264,7 +264,7 @@ FieldFormatters.update(
 ######################################################################
 
 
-class TMC2240CurrentHelper(tmc.TMCCurrentHelper):
+class TMC2240CurrentHelper(tmc.BaseTMCCurrentHelper):
     def __init__(self, config, mcu_tmc):
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
@@ -358,15 +358,10 @@ class TMC2240CurrentHelper(tmc.TMCCurrentHelper):
             self.req_home_current,
         )
 
-    def set_current(self, run_current, hold_current, print_time, force=False):
-        if not self.needs_current(run_current, hold_current, force):
-            return
-
-        if hold_current != self.req_hold_current:
-            self.set_hold_current(hold_current)
-
-        self.set_actual_current(run_current)
-        gscaler, irun, ihold = self._calc_current(run_current, hold_current)
+    def apply_current(self, print_time):
+        gscaler, irun, ihold = self._calc_current(
+            self.actual_current, self.req_hold_current
+        )
         val = self.fields.set_field("globalscaler", gscaler)
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)
         self.fields.set_field("ihold", ihold)
