@@ -515,8 +515,7 @@ def main():
         start_args["log_file"] = options.logfile
         bglogger = queuelogger.setup_bg_logging(
             filename=options.logfile,
-            debuglevel=debuglevel,
-            rotate_log_at_restart=options.rotate_log_at_restart,
+            debuglevel=debuglevel
         )
         if options.rotate_log_at_restart:
             bglogger.doRollover()
