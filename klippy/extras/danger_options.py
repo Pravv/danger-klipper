@@ -38,5 +38,17 @@ class DangerOptions:
             self.disable_webhook_logging = True
 
 
+DANGER_OPTIONS: DangerOptions = None
+
+
+def get_danger_options():
+    global DANGER_OPTIONS
+    if DANGER_OPTIONS is None:
+        raise Exception("DangerOptions has not been loaded yet!")
+    return DANGER_OPTIONS
+
+
 def load_config(config):
-    return DangerOptions(config)
+    global DANGER_OPTIONS
+    DANGER_OPTIONS = DangerOptions(config)
+    return DANGER_OPTIONS
