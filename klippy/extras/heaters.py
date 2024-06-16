@@ -31,7 +31,7 @@ PID_PROFILE_OPTIONS = {
 
 
 class Heater:
-    def __init__(self, config, sensor):
+    def __init__(self, config, sensor, secondary_sensor=None):
         self.printer = config.get_printer()
         self.name = config.get_name()
         self.short_name = short_name = self.name.split()[-1]
@@ -45,6 +45,7 @@ class Heater:
         self.sensor.setup_minmax(self.min_temp, self.max_temp)
         self.sensor.setup_callback(self.temperature_callback)
         self.pwm_delay = self.sensor.get_report_time_delta()
+        self.secondary_sensor = secondary_sensor
         # Setup temperature checks
         self.min_extrude_temp = config.getfloat(
             "min_extrude_temp",
@@ -75,6 +76,7 @@ class Heater:
         config.getfloat("pid_ki", None)
         config.getfloat("pid_kd", None)
         config.getfloat("max_delta", None)
+
         # Setup output heater pin
         heater_pin = config.get("heater_pin")
         ppins = self.printer.lookup_object("pins")
@@ -132,6 +134,7 @@ class Heater:
                 "pid": ControlPID,
                 "pid_v": ControlVelocityPID,
                 "mpc": ControlMPC,
+                "dual_loop_pid": ControlDualLoopPID
             }
         )
         return algos[profile["control"]](profile, self, load_clean)
@@ -157,7 +160,14 @@ class Heater:
             time_diff = read_time - self.last_temp_time
             self.last_temp = temp
             self.last_temp_time = read_time
-            self.control.temperature_update(read_time, temp, self.target_temp)
+            if self.secondary_sensor is not None:
+                status = self.secondary_sensor.get_status(read_time)
+                secondary_temp = status["temperature"]
+            else:
+                secondary_temp = None
+            self.control.temperature_update(
+                read_time, temp, self.target_temp, secondary_temp=secondary_temp
+            )
             temp_diff = temp - self.smoothed_temp
             adj_time = min(time_diff * self.inv_smooth_time, 1.0)
             self.smoothed_temp += temp_diff * adj_time
@@ -767,22 +777,32 @@ PID_SETTLE_SLOPE = 0.1
 
 
 class ControlPID:
-    def __init__(self, profile, heater, load_clean=False):
-        self.profile = profile
+    def __init__(
+        self,
+        profile,
+        heater,
+        config,
+        load_clean=False,
+        pid_kp_arg_name="pid_kp",
+        pid_ki_arg_name="pid_ki",
+        pid_kd_arg_name="pid_kd",
+    ):
+        # self.profile = profile
         self.heater = heater
         self.heater_max_power = heater.get_max_power()
-        self.Kp = profile["pid_kp"] / PID_PARAM_BASE
-        self.Ki = profile["pid_ki"] / PID_PARAM_BASE
-        self.Kd = profile["pid_kd"] / PID_PARAM_BASE
-        self.min_deriv_time = (
-            self.heater.get_smooth_time()
-            if profile["smooth_time"] is None
-            else profile["smooth_time"]
-        )
+        self._Kp = config.getfloat(pid_kp_arg_name) / PID_PARAM_BASE
+        self._Ki = config.getfloat(pid_ki_arg_name) / PID_PARAM_BASE
+        self._Kd = config.getfloat(pid_kd_arg_name) / PID_PARAM_BASE
+        self.min_deriv_time = self.heater.get_smooth_time()
+        # self.min_deriv_time = self.heater.get_smooth_time()(
+        #     self.heater.get_smooth_time()
+        #     if profile["smooth_time"] is None
+        #     else profile["smooth_time"]
+        # )
         self.heater.set_inv_smooth_time(1.0 / self.min_deriv_time)
         self.temp_integ_max = 0.0
-        if self.Ki:
-            self.temp_integ_max = self.heater_max_power / self.Ki
+        if self._Ki:
+            self.temp_integ_max = self.heater_max_power / self._Ki
         self.prev_temp = (
             AMBIENT_TEMP
             if load_clean
@@ -792,7 +812,7 @@ class ControlPID:
         self.prev_temp_deriv = 0.0
         self.prev_temp_integ = 0.0
 
-    def temperature_update(self, read_time, temp, target_temp):
+    def calculate_output(self, read_time, temp, target_temp):
         time_diff = read_time - self.prev_temp_time
         # Calculate change of temperature
         temp_diff = temp - self.prev_temp
@@ -808,17 +828,22 @@ class ControlPID:
         temp_integ = self.prev_temp_integ + temp_err * time_diff
         temp_integ = max(0.0, min(self.temp_integ_max, temp_integ))
         # Calculate output
-        co = self.Kp * temp_err + self.Ki * temp_integ - self.Kd * temp_deriv
+        co = self._Kp * temp_err + self._Ki * temp_integ - self._Kd * temp_deriv
         # logging.debug("pid: %f@%.3f -> diff=%f deriv=%f err=%f integ=%f co=%d",
         #    temp, read_time, temp_diff, temp_deriv, temp_err, temp_integ, co)
         bounded_co = max(0.0, min(self.heater_max_power, co))
-        self.heater.set_pwm(read_time, bounded_co)
         # Store state for next measurement
         self.prev_temp = temp
         self.prev_temp_time = read_time
         self.prev_temp_deriv = temp_deriv
         if co == bounded_co:
             self.prev_temp_integ = temp_integ
+
+        return co, bounded_co
+
+    def temperature_update(self, read_time, temp, target_temp, *args, **kwargs):
+        _, bounded_co = self.calculate_output(read_time, temp, target_temp)
+        self.heater.set_pwm(read_time, bounded_co)
 
     def check_busy(self, eventtime, smoothed_temp, target_temp):
         temp_diff = target_temp - smoothed_temp
@@ -832,6 +857,30 @@ class ControlPID:
 
     def get_profile(self):
         return self.profile
+
+    @property
+    def Kp(self):
+        return self._Kp * PID_PARAM_BASE
+
+    @property
+    def Ki(self):
+        return self._Ki * PID_PARAM_BASE
+
+    @property
+    def Kd(self):
+        return self._Kd * PID_PARAM_BASE
+
+    @Kp.setter
+    def Kp(self, value):
+        self._Kp = value / PID_PARAM_BASE
+
+    @Ki.setter
+    def Ki(self, value):
+        self._Ki = value / PID_PARAM_BASE
+
+    @Kd.setter
+    def Kd(self, value):
+        self._Kd = value / PID_PARAM_BASE
 
     def get_type(self):
         return "pid"
@@ -925,6 +974,53 @@ class ControlVelocityPID:
         return "pid_v"
 
 
+class ControlDualLoopPID:
+    def __init__(self, profile, heater, load_clean=False, config):
+        self.heater = heater
+        self.heater_max_power = heater.get_max_power()
+
+        self.primary_pid = ControlPID(
+            None, heater, config, False, "primary_pid_kp", "primary_pid_ki", "primary_pid_kd"
+        )
+        self.secondary_pid = ControlPID(
+            None,
+            heater,
+            config,
+            False,
+            "secondary_pid_kp",
+            "secondary_pid_ki",
+            "secondary_pid_kd",
+        )
+        arg_name = "secondary_max_temp_target"
+        self.sec_max_temp_target = config.getfloat(arg_name)
+
+    def temperature_update(
+        self,
+        read_time,
+        primary_temp,
+        target_temp,
+        secondary_temp,
+        *args,
+        **kwargs
+    ):
+
+        pco, _ = self.primary_pid.calculate_output(
+            read_time, primary_temp, target_temp
+        )
+        sco, _ = self.secondary_pid.calculate_output(
+            read_time, secondary_temp, self.sec_max_temp_target
+        )
+
+        co = min(pco, sco)
+        bounded_co = max(0.0, min(self.heater_max_power, co))
+        self.heater.set_pwm(read_time, bounded_co)
+
+    def check_busy(self, eventtime, smoothed_temp, target_temp):
+        return self.primary_pid.check_busy(
+            eventtime, smoothed_temp, target_temp
+        )
+
+
 ######################################################################
 # Sensor and heater lookup
 ######################################################################
@@ -978,10 +1074,18 @@ class PrinterHeaters:
         heater_name = config.get_name().split()[-1]
         if heater_name in self.heaters:
             raise config.error("Heater %s already registered" % (heater_name,))
-        # Setup sensor
+        # Setup 1st sensor
         sensor = self.setup_sensor(config)
+        # Setup 2nd sensor
+        secondary_sensor_name = config.get("secondary_sensor_name", None)
+        if secondary_sensor_name is not None:
+            full_name = "temperature_sensor " + secondary_sensor_name
+            secondary_sensor = self.printer.lookup_object(full_name)
+        else:
+            secondary_sensor = None
         # Create heater
-        self.heaters[heater_name] = heater = Heater(config, sensor)
+        heater = Heater(config, sensor, secondary_sensor)
+        self.heaters[heater_name] = heater
         self.register_sensor(config, heater, gcode_id)
         self.available_heaters.append(config.get_name())
         return heater
