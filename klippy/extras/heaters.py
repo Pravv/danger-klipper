@@ -434,7 +434,7 @@ class Heater:
                     temp_profile[key] = self._check_value_config(
                         key, config_section, type, can_be_none
                     )
-                if name == "default":
+                if name == "default" or control == 'dual_loop_pid':
                     temp_profile["smooth_time"] = None
             else:
                 raise self.outer_instance.printer.config_error(
