@@ -53,6 +53,12 @@ class PrinterADCtoTemperature:
             range_check_count=danger_check_count,
         )
 
+# Interface between ADC and temperature calculation tables
+class ConvertADCtoTemperature:
+    def __init__(self, adc_convert):
+        self.adc_convert = adc_convert
+    def calcTemp(self, read_value):
+        return self.adc_convert.calc_temp(read_value)
 
 ######################################################################
 # Linear interpolation
