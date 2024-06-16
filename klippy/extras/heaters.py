@@ -137,7 +137,7 @@ class Heater:
                 "dual_loop_pid": ControlDualLoopPID
             }
         )
-        return algos[profile["control"]](profile, self, load_clean)
+        return algos[profile["control"]](profile, self, load_clean, self.config)
 
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.0 or self.is_shutdown:
@@ -738,7 +738,7 @@ class Heater:
 
 
 class ControlBangBang:
-    def __init__(self, profile, heater, load_clean=False):
+    def __init__(self, profile, heater, load_clean=False, config=None):
         self.profile = profile
         self.heater = heater
         self.heater_max_power = heater.get_max_power()
@@ -781,8 +781,8 @@ class ControlPID:
         self,
         profile,
         heater,
-        config,
         load_clean=False,
+        config=None,
         pid_kp_arg_name="pid_kp",
         pid_ki_arg_name="pid_ki",
         pid_kd_arg_name="pid_kd",
@@ -892,7 +892,7 @@ class ControlPID:
 
 
 class ControlVelocityPID:
-    def __init__(self, profile, heater, load_clean=False):
+    def __init__(self, profile, heater, load_clean=False, config=None):
         self.profile = profile
         self.heater = heater
         self.heater_max_power = heater.get_max_power()
@@ -975,18 +975,18 @@ class ControlVelocityPID:
 
 
 class ControlDualLoopPID:
-    def __init__(self, profile, heater, load_clean=False, config):
+    def __init__(self, profile, heater, load_clean=False, config=None):
         self.heater = heater
         self.heater_max_power = heater.get_max_power()
 
         self.primary_pid = ControlPID(
-            None, heater, config, False, "primary_pid_kp", "primary_pid_ki", "primary_pid_kd"
+            None, heater, False, config, "primary_pid_kp", "primary_pid_ki", "primary_pid_kd"
         )
         self.secondary_pid = ControlPID(
             None,
             heater,
-            config,
             False,
+            config,
             "secondary_pid_kp",
             "secondary_pid_ki",
             "secondary_pid_kd",
