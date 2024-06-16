@@ -787,7 +787,7 @@ class ControlPID:
         pid_ki_arg_name="pid_ki",
         pid_kd_arg_name="pid_kd",
     ):
-        # self.profile = profile
+        self.profile = profile
         self.heater = heater
         self.heater_max_power = heater.get_max_power()
         self._Kp = config.getfloat(pid_kp_arg_name) / PID_PARAM_BASE
@@ -977,15 +977,16 @@ class ControlVelocityPID:
 class ControlDualLoopPID:
     def __init__(self, profile, heater, load_clean=False, config=None):
         self.heater = heater
+        self.profile = profile
         self.heater_max_power = heater.get_max_power()
 
         self.primary_pid = ControlPID(
-            None, heater, False, config, "primary_pid_kp", "primary_pid_ki", "primary_pid_kd"
+            profile, heater, load_clean, config, "primary_pid_kp", "primary_pid_ki", "primary_pid_kd"
         )
         self.secondary_pid = ControlPID(
-            None,
+            profile,
             heater,
-            False,
+            load_clean,
             config,
             "secondary_pid_kp",
             "secondary_pid_ki",
@@ -1019,6 +1020,14 @@ class ControlDualLoopPID:
         return self.primary_pid.check_busy(
             eventtime, smoothed_temp, target_temp
         )
+    def update_smooth_time(self):
+        self.primary_pid.update_smooth_time()
+
+    def get_profile(self):
+        return self.profile
+
+    def get_type(self):
+        return "dual_loop_pid"
 
 
 ######################################################################
